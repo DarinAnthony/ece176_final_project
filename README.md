@@ -1,23 +1,23 @@
-# ece176_final_project
+# ECE176 Final Project
 This repository holds experiments run on the Atari games using Deep Reinforcement Learning algorithms such as DQN, using various different CNN architectures
 
-# FOLDER STRUCTURE
+# Folder Structure
 
     project/
 
     ├── models/
 
-    │   ├── base.py      # DQN 2013 architecture
+        ├── base.py      # DQN 2013 architecture
 
-    │   ├── base.py      # DQN 2015 architecture
+        ├── base.py      # DQN 2015 architecture
 
-    │   ├── resnet_cnn.py        # ResNet-style architecture
+        ├── resnet_cnn.py        # ResNet-style architecture
 
-    │   └── attention_cnn.py     # Attention-based architecture
+        └── attention_cnn.py     # Attention-based architecture
 
     ├── agents/
 
-    │   ├── base.py      # Original Q-Learning Agent from 2015
+        ├── base.py      # Original Q-Learning Agent from 2015
 
     ├── utils/
 
@@ -35,7 +35,15 @@ This repository holds experiments run on the Atari games using Deep Reinforcemen
 
         ├── videos/
 
-    │   │   ├── /
+            ├── video1.mp4
+
+            ├── ...
+
+        ├── metrics/
+
+            ├── metric1.png
+
+            ├── ...
 
     ├── train.py                 # Main training script
 
@@ -61,3 +69,5 @@ The preprocessing step goes as follows:
 - This is why the input has 4 channels despite starting with RGB images
 
 Each channel represents a different time step (not color channels anymore, but consecutive grayscale frames)
+
+# Model Architecture
