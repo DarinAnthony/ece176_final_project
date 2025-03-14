@@ -17,7 +17,7 @@ class DQNVisualizer:
     def __init__(self, 
                  env_name, 
                  agent, 
-                 output_dir='./videos',
+                 output_dir='./runs',
                  video_size=(1280, 720), 
                  fps=30,
                  show_metrics=True,
@@ -105,7 +105,7 @@ class DQNVisualizer:
             state = self.agent.process_observation(observation)
         
         # Initialize video writer
-        video_path = os.path.join(self.output_dir, f"{filename}.mp4")
+        video_path = os.path.join(self.output_dir, f"videos/{filename}.mp4")
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         video_writer = cv2.VideoWriter(video_path, fourcc, self.fps, self.video_size)
         
@@ -403,7 +403,7 @@ class DQNVisualizer:
         plt.tight_layout()
         
         # Save figure
-        plot_path = os.path.join(self.output_dir, f"{filename}.png")
+        plot_path = os.path.join(self.output_dir, f"metrics/{filename}.png")
         plt.savefig(plot_path)
         
         if show:
@@ -414,6 +414,10 @@ class DQNVisualizer:
         print(f"Performance metrics saved to {plot_path}")
         return plot_path
 
+
+######################################################################
+############################# Example Usage
+######################################################################
 
 # Example usage
 def example_usage():
@@ -435,7 +439,7 @@ def example_usage():
     visualizer = DQNVisualizer(
         env_name=env_name,
         agent=agent,
-        output_dir='../videos',
+        output_dir='../runs',
         show_metrics=True,
         show_q_values=False,  # Set to True if your agent implements get_q_values()
         show_preprocessed=True

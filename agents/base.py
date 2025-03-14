@@ -1,22 +1,33 @@
-import gymnasium as gym
 import numpy as np
 import random
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 from collections import deque
-import time
-import matplotlib.pyplot as plt
+import os
 from tqdm import tqdm
-import argparse
 
 
 # Main DQN Agent
 class DQNAgent:
-    def __init__(self, env, replayBufferClass, QNetwork, PreprocessorClass, device="cpu", memory_size=100000, batch_size=32, gamma=0.99, 
-                 eps_start=1.0, eps_end=0.1, eps_decay=1000000, target_update=10000,
-                 learning_rate=0.00025):
+    def __init__(self, 
+                 env, 
+                 replayBufferClass, 
+                 QNetwork, 
+                 PreprocessorClass, 
+                 device="cpu", 
+                 memory_size=1000000, 
+                 batch_size=32, 
+                 gamma=0.99, 
+                 eps_start=1.0, 
+                 eps_end=0.1, 
+                 eps_decay=1000000, 
+                 target_update=10000,
+                 learning_rate=0.00025, 
+                 update_freq=4, 
+                 replay_start_size=50000, 
+                 no_op_max=30,
+                 weights_path=None):
         
         self.env = env
         self.device = device
@@ -29,6 +40,10 @@ class DQNAgent:
         self.eps_decay = eps_decay
         self.target_update = target_update
         self.frame_skip = 4
+        self.update_freq = update_freq  # Default set to 4
+        self.update_counter = 0  # For tracking updates
+        self.no_op_max = no_op_max  # Default set to 30
+        self.replay_start_size = replay_start_size  # Default set to 50,000
         
         # Action space
         self.num_actions = env.action_space.n
@@ -39,15 +54,100 @@ class DQNAgent:
         # Create Q networks
         self.policy_net = QNetwork(self.state_shape, self.num_actions).to(self.device)
         self.target_net = QNetwork(self.state_shape, self.num_actions).to(self.device)
-        self.target_net.load_state_dict(self.policy_net.state_dict())
+        
+        # Load pre-trained weights if provided
+        if weights_path is not None:
+            self.load_weights(weights_path)
+        else:
+            # Initialize target network with policy network weights
+            self.target_net.load_state_dict(self.policy_net.state_dict())
+            
         self.target_net.eval()
         
         # Optimizer
-        self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=learning_rate)
+        self.optimizer = optim.RMSprop(
+            self.policy_net.parameters(), 
+            lr=learning_rate,
+            alpha=0.95,  # squared gradient momentum
+            eps=0.01,    # min squared gradient
+            momentum=0.95,  # gradient momentum
+            centered=False
+            )
         
         # Counters
         self.steps_done = 0
         self.episode_rewards = []
+        
+        
+######################################################################
+############################# Helper Methods
+######################################################################
+    
+    def reset_environment(self):
+        """Reset with random number of no-ops"""
+        obs, _ = self.env.reset()
+        
+        # Apply random number of no-op actions
+        no_op_count = random.randint(0, self.no_op_max)
+        
+        # Assume action 0 is NOOP
+        for _ in range(no_op_count):
+            obs, _, terminated, truncated, _ = self.env.step(0)
+            if terminated or truncated:
+                obs, _ = self.env.reset()
+                break
+        
+        return obs
+    
+    
+    def fill_replay_memory(self):
+        """
+        NEW: Fill replay memory with random actions before training starts
+        """
+        print(f"\nFilling replay memory with {self.replay_start_size} frames of random experience...")
+        
+        progress_bar = tqdm(total=self.replay_start_size, desc="Filling Replay Memory")
+        frame_count = 0
+        
+        while frame_count < self.replay_start_size:
+            # Reset with NOOPs
+            obs = self.reset_environment()
+            state = self.get_state(obs)
+            
+            done = False
+            
+            while not done and frame_count < self.replay_start_size:
+                # Select random action
+                action = random.randrange(self.num_actions)
+                
+                # Skip frames (act every k frames)
+                total_reward = 0
+                for _ in range(self.frame_skip):
+                    obs, reward, terminated, truncated, _ = self.env.step(action)
+                    total_reward += reward
+                    done = terminated or truncated
+                    if done:
+                        break
+                
+                # Process new frame
+                next_state = self.get_state(obs)
+                
+                # Clip rewards
+                clipped_reward = np.sign(total_reward)
+                
+                # Store transition in memory
+                self.memory.add(state, action, clipped_reward, next_state, done)
+                
+                # Move to the next state
+                state = next_state
+                frame_count += 1
+                
+                # Update progress bar
+                progress_bar.update(1)
+            
+        progress_bar.close()
+        print("Replay memory filled!")
+        
     
     def select_action(self, state, evaluate=False):
         """
@@ -85,10 +185,73 @@ class DQNAgent:
         
         return state
     
+    
+    def _optimize_model(self):
+        """
+        Perform one step of optimization
+        """
+        if len(self.memory) < self.batch_size:
+            return
+        
+        # Sample from replay memory
+        states, actions, rewards, next_states, dones = self.memory.sample(self.batch_size)
+        
+        # Compute Q values
+        q_values = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
+        
+        # Compute next state values with target network
+        with torch.no_grad():
+            next_q_values = self.target_net(next_states).max(1)[0]
+            expected_q_values = rewards + self.gamma * next_q_values * (1 - dones)
+        
+        # Compute loss
+        loss = F.smooth_l1_loss(q_values, expected_q_values)
+        
+        # Optimize
+        self.optimizer.zero_grad()
+        loss.backward()
+        # Clip gradients
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
+        self.optimizer.step()
+    
+######################################################################
+############################# Visualization Methods
+######################################################################
+    
+    
+    def get_q_values(self, state):
+        """
+        For visualization: Get Q-values for a state
+        """
+        # If state is a numpy array with shape (H, W, C)
+        if isinstance(state, np.ndarray) and state.shape[2] == 4:
+            # Convert to (C, H, W) and add batch dimension
+            state = np.transpose(state, (2, 0, 1))
+            state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        
+        with torch.no_grad():
+            return self.policy_net(state).cpu().numpy()[0]
+    
+    def process_observation(self, observation):
+        """
+        For visualization: Process a single observation through the preprocessor
+        """
+        return self.preprocessor.process(observation)
+    
+    
+######################################################################
+############################# Main Methods
+######################################################################
+    
     def train(self, num_frames):
         """
         Main training loop
         """
+        # Fill replay memory before training starts
+        if len(self.memory) < self.replay_start_size:
+            self.fill_replay_memory()
+            
         # Initialize progress tracking
         progress_bar = tqdm(total=num_frames, desc="Training")
         episode_rewards = []
@@ -100,7 +263,7 @@ class DQNAgent:
         
         while frame_count < num_frames:
             # Reset environment
-            obs, _ = self.env.reset()
+            obs = self.reset_environment()
             state = self.get_state(obs)
             
             episode_reward = 0
@@ -137,8 +300,9 @@ class DQNAgent:
                 # Update progress bar
                 progress_bar.update(1)
                 
-                # Train the model if enough samples are available
-                if len(self.memory) > self.batch_size:
+                # Train the model only every update_freq steps and if there are enough training samples
+                self.update_counter += 1
+                if self.update_counter % self.update_freq == 0 and len(self.memory) > self.batch_size:
                     self._optimize_model()
                 
                 # Update the target network
@@ -154,7 +318,8 @@ class DQNAgent:
                     # Save best model
                     if eval_reward > best_mean_reward:
                         best_mean_reward = eval_reward
-                        torch.save(self.policy_net.state_dict(), f"dqn_{self.env.unwrapped.spec.id}_best.pth")
+                        safe_id = self.env.unwrapped.spec.id.replace('/', '_')
+                        torch.save(self.policy_net.state_dict(), f"weights/dqn_{safe_id}_best.pth")
             
             # Episode finished
             episode_count += 1
@@ -171,47 +336,21 @@ class DQNAgent:
         print("\nTraining completed!")
         
         # Save final model
-        torch.save(self.policy_net.state_dict(), f"dqn_{self.env.unwrapped.spec.id}_final.pth")
+        safe_id = self.env.unwrapped.spec.id.replace('/', '_')
+        torch.save(self.policy_net.state_dict(), f"weights/dqn_{safe_id}_final.pth")
         
         return episode_rewards, eval_rewards
     
-    def _optimize_model(self):
-        """
-        Perform one step of optimization
-        """
-        if len(self.memory) < self.batch_size:
-            return
-        
-        # Sample from replay memory
-        states, actions, rewards, next_states, dones = self.memory.sample(self.batch_size)
-        
-        # Compute Q values
-        q_values = self.policy_net(states).gather(1, actions.unsqueeze(1)).squeeze(1)
-        
-        # Compute next state values with target network
-        with torch.no_grad():
-            next_q_values = self.target_net(next_states).max(1)[0]
-            expected_q_values = rewards + self.gamma * next_q_values * (1 - dones)
-        
-        # Compute loss
-        loss = F.smooth_l1_loss(q_values, expected_q_values)
-        
-        # Optimize
-        self.optimizer.zero_grad()
-        loss.backward()
-        # Clip gradients
-        for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
-        self.optimizer.step()
     
     def evaluate(self, num_episodes=10, epsilon=0.05):
         """
         Evaluate the agent over several episodes
         """
+        
         total_rewards = []
         
         for _ in range(num_episodes):
-            obs, _ = self.env.reset()
+            obs = self.reset_environment()
             
             # get a state
             state = self.get_state(obs)
@@ -246,3 +385,31 @@ class DQNAgent:
             total_rewards.append(episode_reward)
         
         return np.mean(total_rewards)
+    
+    
+######################################################################
+############################# Utility Methods
+######################################################################
+    
+    def save_weights(self, path):
+        """Save the current policy network weights to a file"""
+        try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            torch.save(self.policy_net.state_dict(), path)
+            print(f"Successfully saved weights to {path}")
+        except Exception as e:
+            print(f"Error saving weights to {path}: {e}")
+            
+
+    def load_weights(self, path):
+        """Load weights from a file into both policy and target networks"""
+        try:
+            state_dict = torch.load(path, map_location=self.device)
+            self.policy_net.load_state_dict(state_dict)
+            self.target_net.load_state_dict(state_dict)
+            print(f"Successfully loaded weights from {path}")
+            return True
+        except Exception as e:
+            print(f"Error loading weights from {path}: {e}")
+            return False

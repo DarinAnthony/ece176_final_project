@@ -124,68 +124,9 @@ class DQNPreprocessor:
         self.is_initialized = False
 
 
-class DQNAgent:
-    """
-    Simple DQN Agent skeleton that uses the DQNPreprocessor.
-    """
-    def __init__(self, state_size=(84, 84, 4), action_size=4):
-        """
-        Initialize the DQN Agent.
-        
-        Parameters:
-        -----------
-        state_size : tuple
-            Shape of the state (default: (84, 84, 4) as in the DQN papers)
-        action_size : int
-            Number of possible actions
-        """
-        self.state_size = state_size
-        self.action_size = action_size
-        self.preprocessor = DQNPreprocessor()
-        
-        # Here you would initialize your Q-network, replay buffer, etc.
-        print(f"DQN Agent initialized with state size {state_size} and action size {action_size}")
-    
-    def process_observation(self, observation):
-        """
-        Process a new observation from the environment.
-        
-        Parameters:
-        -----------
-        observation : numpy.ndarray
-            Raw RGB frame from Atari environment
-        
-        Returns:
-        --------
-        numpy.ndarray or None
-            Stacked state if enough frames are collected, None otherwise
-        """
-        return self.preprocessor.process(observation)
-    
-    def reset(self):
-        """
-        Reset the agent between episodes.
-        """
-        self.preprocessor.reset()
-        
-    def select_action(self, state):
-        """
-        Select an action based on the current state.
-        This is just a placeholder - in a real implementation this would use the Q-network.
-        
-        Parameters:
-        -----------
-        state : numpy.ndarray
-            Stacked state (84x84x4)
-        
-        Returns:
-        --------
-        int
-            Selected action
-        """
-        # In a real implementation, this would use the Q-network
-        return np.random.randint(self.action_size)
-
+######################################################################
+############################# Example Usage
+######################################################################
 
 # Example usage
 def example_usage():

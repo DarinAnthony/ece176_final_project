@@ -1,4 +1,4 @@
-from base import DQN
+from models.base import DQN
 import torch
 import torch.nn as nn
 

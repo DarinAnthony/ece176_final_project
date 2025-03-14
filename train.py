@@ -35,18 +35,21 @@ def train_atari(game_name="ALE/Breakout-v5",
     
     # Create agent
     agent = DQNAgent(env, 
-                     ReplayBuffer,
-                     DQN,
-                     DQNPreprocessor,
-                     device,
-                     memory_size=memory_size, 
-                     batch_size=batch_size, 
-                     gamma=gamma,
-                     eps_start=eps_start, 
-                     eps_end=eps_end, 
-                     eps_decay=eps_decay, 
-                     target_update=target_update,
-                     learning_rate=learning_rate)
+                 ReplayBuffer,
+                 DQN,
+                 DQNPreprocessor,
+                 device,
+                 memory_size=memory_size, 
+                 batch_size=batch_size, 
+                 gamma=gamma,
+                 eps_start=eps_start, 
+                 eps_end=eps_end, 
+                 eps_decay=eps_decay, 
+                 target_update=target_update,
+                 learning_rate=learning_rate,
+                 update_freq=4,
+                 replay_start_size=50000,
+                 no_op_max=30)
     
     # Train agent
     print(f"Training on {game_name} for {num_frames} frames...")

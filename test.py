@@ -99,85 +99,6 @@ def quick_validation(agent, env_name, max_frames=1000):
     env.close()
     return True
 
-def mini_training(agent, env_name, num_frames=10000, eval_interval=2000):
-    """
-    Run a mini training session to ensure all components work together.
-    """
-    env = gym.make(env_name)
-    progress_bar = tqdm(total=num_frames, desc="Mini training")
-    
-    frame_count = 0
-    episode_count = 0
-    rewards_history = []
-    
-    while frame_count < num_frames:
-        # Reset environment
-        obs, _ = env.reset()
-        state = agent.get_state(obs)
-        
-        episode_reward = 0
-        done = False
-        
-        while not done and frame_count < num_frames:
-            # Select action
-            action = agent.select_action(state)
-            
-            # Skip frames (act every k frames)
-            total_reward = 0
-            for _ in range(agent.frame_skip):
-                obs, reward, terminated, truncated, _ = env.step(action)
-                total_reward += reward
-                done = terminated or truncated
-                if done:
-                    break
-            
-            # Process new frame
-            next_state = agent.get_state(obs)
-            
-            # Clip rewards
-            clipped_reward = np.sign(total_reward)
-            
-            # Store transition
-            agent.memory.add(state, action, clipped_reward, next_state, done)
-            
-            # Update
-            state = next_state
-            episode_reward += total_reward
-            frame_count += 1
-            
-            # Optimize model
-            if len(agent.memory) > agent.batch_size:
-                agent._optimize_model()
-            
-            # Update target network
-            if frame_count % agent.target_update == 0:
-                agent.target_net.load_state_dict(agent.policy_net.state_dict())
-            
-            progress_bar.update(1)
-        
-        # Episode finished
-        episode_count += 1
-        rewards_history.append(episode_reward)
-        
-        # Print stats
-        print(f"\nEpisode {episode_count}, Frames: {frame_count}, Reward: {episode_reward:.2f}")
-    
-    progress_bar.close()
-    print("Mini training completed!")
-    
-    # Plot rewards
-    plt.figure(figsize=(10, 5))
-    plt.plot(rewards_history)
-    plt.title("Episode Rewards")
-    plt.xlabel("Episode")
-    plt.ylabel("Total Reward")
-    plt.grid(True)
-    
-    # Save the model
-    os.makedirs("models", exist_ok=True)
-    torch.save(agent.policy_net.state_dict(), f"models/mini_train_{env_name.replace('/', '_')}.pth")
-    
-    return rewards_history
 
 def visualize_agent(agent, env_name, num_episodes=2, max_steps=1000):
     """
@@ -248,12 +169,15 @@ def test_dqn():
     agent = DQNAgent(
         env=env,
         replayBufferClass=ReplayBuffer,
-        QNetwork=DQN,
+        QNetwork=DQN2,
         PreprocessorClass=DQNPreprocessor,
         device=device,
         memory_size=10000,  # Smaller for testing
         batch_size=32,
-        target_update=500   # Smaller for testing
+        target_update=500,   # Smaller for testing
+        update_freq=4,
+        replay_start_size=1000,
+        no_op_max=30
     )
     
     # Quick validation (catches basic errors)
@@ -262,7 +186,16 @@ def test_dqn():
     
     # Mini training session (catches training-related issues)
     print("\n=== Running Mini Training ===")
-    mini_training(agent, env_name, num_frames=5000)
+    episode_rewards, eval_rewards = agent.train(num_frames=5000)
+
+    # Plot results
+    plt.figure(figsize=(10, 5))
+    plt.plot(episode_rewards)
+    plt.title("Episode Rewards")
+    plt.xlabel("Episode")
+    plt.ylabel("Total Reward")
+    plt.grid(True)
+    plt.savefig(f"mini_train_{env_name.replace('/', '_')}_rewards.png")
     
     # Visualize the agent
     print("\n=== Visualizing Agent ===")

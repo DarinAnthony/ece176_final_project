@@ -4,15 +4,39 @@ This repository holds experiments run on the Atari games using Deep Reinforcemen
 # FOLDER STRUCTURE
 
 project/
-├── networks/
-│   ├── baseline_cnn.py      # Original DQN architecture
+
+├── models/
+
+│   ├── base.py      # DQN 2013 architecture
+
+│   ├── base.py      # DQN 2015 architecture
+
 │   ├── resnet_cnn.py        # ResNet-style architecture
+
 │   └── attention_cnn.py     # Attention-based architecture
+
+├── agents/
+
+│   ├── base.py      # Original Q-Learning Agent from 2015
+
+├── utils/
+
+    ├── preprocessing.py     # Methods for preprocessing images before passing into the QNetwork
+
+    └── visualization.py     # Methods for visualizing results
+
+    ├── replayBuffer.py     # Implementation of the replay buffer
+
+├── weights/
+
+│   ├── dqn_ALE_Breakout-v5_final.pth      # Stored weights from a training run
+
+├── runs/
+
 ├── train.py                 # Main training script
-├── evaluate.py              # Evaluation script
-└── utils/
-    ├── preprocessing.py     # Custom preprocessing if needed
-    └── visualization.py     # For visualizing results
+
+└── evaluate.py              # Evaluation script
+
 
 # Preprocessing
 
