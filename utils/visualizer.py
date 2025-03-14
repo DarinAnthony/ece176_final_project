@@ -8,7 +8,6 @@ import gymnasium as gym
 from collections import deque
 import time
 
-
 class DQNVisualizer:
     """
     Visualizer for DQN agents that can render gameplay and performance metrics
@@ -152,10 +151,11 @@ class DQNVisualizer:
             # Write frame to video
             video_writer.write(cv2.cvtColor(viz_frame, cv2.COLOR_RGB2BGR))
             
-            # Display frame if requested
             if render:
-                cv2.imshow('DQN Visualization', cv2.cvtColor(viz_frame, cv2.COLOR_RGB2BGR))
-                cv2.waitKey(1)
+                if not self.running_in_colab():
+                    # Display frame if requested
+                    cv2.imshow('DQN Visualization', cv2.cvtColor(viz_frame, cv2.COLOR_RGB2BGR))
+                    cv2.waitKey(1)
             
             # Update timekeeping
             self.frame_times.append(time.time() - start_time)
@@ -164,6 +164,13 @@ class DQNVisualizer:
             # Move to next state
             state = next_state
         
+        if self.running_in_colab():
+            from IPython.display import Video, display
+            from google.colab import drive
+            drive.mount('/content/drive')
+            os.chdir('/content/drive/My Drive/projects/ece176_final_project')
+            display(Video(video_path, embed=True, width=600, height=400))
+            
         # Clean up
         video_writer.release()
         if render:
@@ -306,37 +313,42 @@ class DQNVisualizer:
         
         # Add Q-values bar chart if available
         if self.show_q_values and q_values is not None:
-            # Create matplotlib figure
-            fig = Figure(figsize=(5, 2), dpi=100)
-            canvas_fig = FigureCanvas(fig)
-            ax = fig.add_subplot(111)
+            # Create a simple bar chart using OpenCV instead of Matplotlib
+            chart_width, chart_height = 400, 200
+            chart = np.ones((chart_height, chart_width, 3), dtype=np.uint8) * 255
             
-            # Simple action names mapping - customize for your specific environment
-            action_names = [str(i) for i in range(len(q_values))]
+            # Draw bars
+            num_actions = len(q_values)
+            bar_width = int(chart_width / (num_actions * 2))
+            max_q = max(abs(max(q_values)), abs(min(q_values)), 1.0)  # Avoid division by zero
             
-            # Plot
-            bars = ax.bar(action_names, q_values)
+            for i, q in enumerate(q_values):
+                # Normalize q value
+                bar_height = int((abs(q) / max_q) * (chart_height - 40))
+                color = (0, 0, 255) if i == action else (0, 0, 0)  # Red for selected action
+                
+                # Bar position
+                x = i * bar_width * 2 + bar_width
+                y = chart_height - 20 - bar_height
+                
+                # Draw bar
+                cv2.rectangle(chart, (x, y), (x + bar_width, chart_height - 20), color, -1)
+                
+                # Add value text
+                cv2.putText(chart, f"{q:.2f}", (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
+                
+                # Add action label
+                cv2.putText(chart, str(i), (x, chart_height - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 0), 1)
             
-            # Highlight selected action
-            if action < len(q_values):
-                bars[action].set_color('red')
-            
-            ax.set_title('Q-values by Action')
-            ax.set_ylabel('Q-value')
-            
-            # Draw the plot
-            canvas_fig.draw()
-            
-            # Convert to numpy array
-            plot_img = np.frombuffer(canvas_fig.tostring_rgb(), dtype=np.uint8)
-            plot_img = plot_img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            # Add title
+            cv2.putText(chart, "Q-values by Action", (10, 15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
             
             # Calculate position (right side of screen)
-            plot_x = self.video_size[0] - plot_img.shape[1] - 20
+            plot_x = self.video_size[0] - chart_width - 20
             plot_y = 20
             
             # Place on canvas
-            canvas[plot_y:plot_y+plot_img.shape[0], plot_x:plot_x+plot_img.shape[1]] = plot_img
+            canvas[plot_y:plot_y+chart_height, plot_x:plot_x+chart_width] = chart
         
         return canvas
     
@@ -414,6 +426,9 @@ class DQNVisualizer:
         print(f"Performance metrics saved to {plot_path}")
         return plot_path
 
+    def running_in_colab(self):
+        import sys
+        return 'google.colab' in sys.modules
 
 ######################################################################
 ############################# Example Usage

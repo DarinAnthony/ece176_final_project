@@ -31,7 +31,7 @@ class DQNAgent:
         
         self.env = env
         self.device = device
-        self.memory = replayBufferClass(memory_size)
+        self.memory = replayBufferClass(memory_size, self.device)
         self.preprocessor = PreprocessorClass()
         self.batch_size = batch_size
         self.gamma = gamma
@@ -328,9 +328,8 @@ class DQNAgent:
             
             # Print episode stats
             mean_reward = np.mean(rewards_window) if rewards_window else episode_reward
-            print(f"\rEpisode {episode_count}, Frames: {frame_count}, Reward: {episode_reward:.2f}, "
-                  f"Avg Reward: {mean_reward:.2f}, Epsilon: {max(self.eps_end, self.eps_start - (self.steps_done / self.eps_decay)):.4f}",
-                  end="")
+            tqdm.write(f"Episode {episode_count}, Frames: {frame_count}, Reward: {episode_reward:.2f}, "
+                  f"Avg Reward: {mean_reward:.2f}, Epsilon: {max(self.eps_end, self.eps_start - (self.steps_done / self.eps_decay)):.4f}")
         
         progress_bar.close()
         print("\nTraining completed!")

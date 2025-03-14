@@ -1,7 +1,6 @@
 # test_dqn.py
 import torch
 import numpy as np
-from tqdm import tqdm
 import gymnasium as gym
 import ale_py
 import matplotlib.pyplot as plt
@@ -108,9 +107,9 @@ def visualize_agent(agent, env_name, num_episodes=2, max_steps=1000):
     visualizer = DQNVisualizer(
         env_name=env_name,
         agent=agent,
-        output_dir='./videos',
+        output_dir='./runs',
         show_metrics=True,
-        show_q_values=True,
+        show_q_values=False,
         show_preprocessed=True
     )
     

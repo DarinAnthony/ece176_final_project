@@ -19,15 +19,17 @@ class ReplayBuffer:
         # Convert to torch tensors and ensure all are on the same device
         # Check if states are already tensors (they might be from get_state)
         if isinstance(states[0], torch.Tensor):
-            states = torch.cat(states).to(self.device)
+            states = torch.cat(states, dim=0).float().to(self.device)
         else:
-            states = torch.tensor(np.array(states), dtype=torch.float32).to(self.device)
+            states_np = [s if s.shape == (4,84,84) else s.squeeze(0) for s in states]
+            states_np = np.stack(states_np, axis=0)  # => [batch_size, 4, 84, 84]
+            states = torch.tensor(states_np, dtype=torch.float32, device=self.device)
         
         actions = torch.tensor(actions, dtype=torch.long).to(self.device)
         rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
         
         if isinstance(next_states[0], torch.Tensor):
-            next_states = torch.cat(next_states).to(self.device)
+            next_states = torch.cat(next_states).float().to(self.device)
         else:
             next_states = torch.tensor(np.array(next_states), dtype=torch.float32).to(self.device)
         
