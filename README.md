@@ -71,3 +71,9 @@ The preprocessing step goes as follows:
 Each channel represents a different time step (not color channels anymore, but consecutive grayscale frames)
 
 # Model Architecture
+
+
+
+# Notes
+
+For each file such as the preprocessor/visualizer, there may be an example usage section in the bottom you may use to understand how it is used at an abstracted level

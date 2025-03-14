@@ -1,115 +1,79 @@
-import gymnasium as gym
-import numpy as np
-import random
 import torch
-import torch.nn as nn
-import torch.optim as optim
-import torch.nn.functional as F
-from collections import deque
-import time
+import numpy as np
+import gymnasium as gym
+import ale_py
 import matplotlib.pyplot as plt
-from tqdm import tqdm
-import argparse
+import os
+
+# Import your modules
 from utils.preprocessor import DQNPreprocessor
 from models.base import DQN
+from models.dqn2015 import DQN2
 from utils.replayBuffer import ReplayBuffer
 from agents.base import DQNAgent
+from utils.visualizer import DQNVisualizer  # The visualizer class you shared
 
-# Function to train and evaluate on a specific Atari game
-def train_atari(game_name="ALE/Breakout-v5", 
-                num_frames=1000000, 
-                memory_size=100000, 
-                batch_size=32, 
-                gamma=0.99,
-                eps_start=1.0, 
-                eps_end=0.1, 
-                eps_decay=1000000, 
-                target_update=10000,
-                learning_rate=0.00025):
-    
-    # Set device
+def train_breakout_dqn():
+    """
+    Train a DQN agent on Breakout until it reaches strong performance,
+    loosely following the 2015 DeepMind DQN hyperparameters.
+    """
+    # 1. Environment setup
+    env_name = "ALE/Breakout-v5"
+    env = gym.make(env_name)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
     
-    # Create environment
-    env = gym.make(game_name)
-    
-    # Create agent
-    agent = DQNAgent(env, 
-                 ReplayBuffer,
-                 DQN,
-                 DQNPreprocessor,
-                 device,
-                 memory_size=memory_size, 
-                 batch_size=batch_size, 
-                 gamma=gamma,
-                 eps_start=eps_start, 
-                 eps_end=eps_end, 
-                 eps_decay=eps_decay, 
-                 target_update=target_update,
-                 learning_rate=learning_rate,
-                 update_freq=4,
-                 replay_start_size=50000,
-                 no_op_max=30)
-    
-    # Train agent
-    print(f"Training on {game_name} for {num_frames} frames...")
-    start_time = time.time()
-    episode_rewards, eval_rewards = agent.train(num_frames)
-    total_time = time.time() - start_time
-    print(f"Training completed in {total_time:.2f} seconds")
-    
-    # Plot training results
-    plt.figure(figsize=(12, 5))
-    
-    plt.subplot(1, 2, 1)
-    plt.plot(episode_rewards)
-    plt.title(f'Episode Rewards: {game_name}')
-    plt.xlabel('Episode')
-    plt.ylabel('Reward')
-    
-    plt.subplot(1, 2, 2)
-    frames, rewards = zip(*eval_rewards)
-    plt.plot(frames, rewards)
-    plt.title(f'Evaluation Rewards: {game_name}')
-    plt.xlabel('Frames')
-    plt.ylabel('Avg Reward over 10 Episodes')
-    
-    plt.tight_layout()
-    plt.savefig(f"{game_name.split('/')[-1]}_rewards.png")
-    plt.show()
-    
-    # Save results
-    np.save(f"{game_name.split('/')[-1]}_episode_rewards.npy", np.array(episode_rewards))
-    np.save(f"{game_name.split('/')[-1]}_eval_rewards.npy", np.array(eval_rewards))
-    
-    # Close environment
-    env.close()
-    
-    return agent
+    # 2. Create the agent with "paper-like" hyperparameters
+    # NOTE: The values below reflect what was used in Mnih et al. (2015), but feel free to tweak.
+    num_frames = 100_000
 
+    agent = DQNAgent(
+        env=env,
+        replayBufferClass=ReplayBuffer,
+        QNetwork=DQN2,
+        PreprocessorClass=DQNPreprocessor,
+        device=device,
+        memory_size=100_000, 
+        batch_size=32,
+        gamma=0.99,
+        eps_start=1.0,
+        eps_end=0.1,
+        eps_decay=200_000,   # smaller than 1 million
+        target_update=2_000, # update target more frequently
+        learning_rate=0.00025,
+        update_freq=4,
+        replay_start_size=2_000,  # small replay start
+        no_op_max=30
+    )
+
+
+    # 3. Train for many frames. The original paper used up to 10^7 or more.
+    #    This can take many hours/days on CPU and ~1-2 days on a good GPU.
+    num_frames = 10_000_000
+    print(f"Starting long training for {num_frames} frames...")
+
+    episode_rewards, eval_rewards = agent.train(num_frames=num_frames)
+    print("Training completed!")
+    
+    # 4. Plot training episode rewards
+    os.makedirs("results", exist_ok=True)
+    plt.figure(figsize=(12,6))
+    plt.plot(episode_rewards, label="Episode Reward")
+    plt.title("Training Rewards over Episodes")
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("results/breakout_dqn_training_rewards.png")
+    plt.close()
+
+    # 5. Evaluate the final policy (optional)
+    eval_score = agent.evaluate(num_episodes=10, epsilon=0.05)
+    print(f"Evaluation over 10 episodes: {eval_score:.2f} average reward")
+
+    # 6. Clean up
+    env.close()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Train DQN on Atari games')
-    parser.add_argument('--game', type=str, default='ALE/Breakout-v5', help='Atari game to train on')
-    parser.add_argument('--frames', type=int, default=1000000, help='Number of frames to train for')
-    parser.add_argument('--memory-size', type=int, default=100000, help='Replay buffer size')
-    parser.add_argument('--batch-size', type=int, default=32, help='Batch size for training')
-    parser.add_argument('--gamma', type=float, default=0.99, help='Discount factor')
-    parser.add_argument('--eps-start', type=float, default=1.0, help='Starting epsilon for exploration')
-    parser.add_argument('--eps-end', type=float, default=0.1, help='Final epsilon for exploration')
-    parser.add_argument('--eps-decay', type=int, default=1000000, help='Frames over which to decay epsilon')
-    parser.add_argument('--target-update', type=int, default=10000, help='Frequency of target network updates')
-    parser.add_argument('--lr', type=float, default=0.00025, help='Learning rate')
-    
-    args = parser.parse_args()
-    
-    train_atari(game_name=args.game,
-                num_frames=args.frames,
-                memory_size=args.memory_size,
-                batch_size=args.batch_size,
-                gamma=args.gamma,
-                eps_start=args.eps_start,
-                eps_end=args.eps_end,
-                eps_decay=args.eps_decay,
-                target_update=args.target_update,
-                learning_rate=args.lr)
+    train_breakout_dqn()

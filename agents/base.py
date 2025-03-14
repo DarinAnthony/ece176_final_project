@@ -233,11 +233,21 @@ class DQNAgent:
         with torch.no_grad():
             return self.policy_net(state).cpu().numpy()[0]
     
-    def process_observation(self, observation):
+    def process_observation(self, obs):
         """
         For visualization: Process a single observation through the preprocessor
         """
-        return self.preprocessor.process(observation)
+        # Preprocess => returns shape (84,84,4) as a NumPy array
+        processed = self.preprocessor.process(obs)
+        if processed is None:
+            return None
+
+        # Convert to (C,H,W) = (4,84,84)
+        processed = np.transpose(processed, (2, 0, 1))
+
+        # Convert to Torch
+        processed_tensor = torch.FloatTensor(processed).unsqueeze(0).to(self.device)
+        return processed_tensor
     
     
 ######################################################################
@@ -318,6 +328,8 @@ class DQNAgent:
                     # Save best model
                     if eval_reward > best_mean_reward:
                         best_mean_reward = eval_reward
+                        
+                        # modify the path name if there are instances of '/'
                         safe_id = self.env.unwrapped.spec.id.replace('/', '_')
                         torch.save(self.policy_net.state_dict(), f"weights/dqn_{safe_id}_best.pth")
             
@@ -407,7 +419,11 @@ class DQNAgent:
             state_dict = torch.load(path, map_location=self.device)
             self.policy_net.load_state_dict(state_dict)
             self.target_net.load_state_dict(state_dict)
-            print(f"Successfully loaded weights from {path}")
+
+            # Print model info
+            print(f"Loaded model from {path}")
+            print(f"Model was trained for {state_dict.get('frames', 'unknown')} frames")
+            print(f"Original epsilon: {state_dict.get('epsilon', 'unknown')}")
             return True
         except Exception as e:
             print(f"Error loading weights from {path}: {e}")

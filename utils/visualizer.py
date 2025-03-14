@@ -167,7 +167,7 @@ class DQNVisualizer:
         if self.running_in_colab():
             from IPython.display import Video, display
             from google.colab import drive
-            drive.mount('/content/drive')
+            drive.mount('/content/drive', force_remount=True)
             os.chdir('/content/drive/My Drive/projects/ece176_final_project')
             display(Video(video_path, embed=True, width=600, height=400))
             
@@ -259,9 +259,18 @@ class DQNVisualizer:
             for i in range(min(4, processed_state.shape[2])):
                 # Get the frame and normalize for display
                 frame = processed_state[:, :, i]
-                frame_display = (frame * 255).astype(np.uint8)
                 
-                # Convert grayscale to RGB for display
+                
+                # 1) Convert from PyTorch to NumPy
+                frame_np = frame.detach().cpu().numpy()  # shape might be (1, 84, 84)
+
+                # 2) Squeeze any leading dimension
+                frame_np = np.squeeze(frame_np)          # => shape (84, 84)
+
+                # 3) Scale up to 0–255 and cast
+                frame_display = (frame_np * 255).astype(np.uint8)
+
+                # 4) Now shape is (84, 84), so cv2.COLOR_GRAY2RGB is valid
                 frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_GRAY2RGB)
                 
                 # Resize for display
