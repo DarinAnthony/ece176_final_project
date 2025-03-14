@@ -1,4 +1,5 @@
 import gymnasium as gym
+import ale_py
 import numpy as np
 import random
 import torch
@@ -14,13 +15,24 @@ import argparse
 
 # Main DQN Agent
 class DQNAgent:
-    def __init__(self, env, replayBufferClass, QNetwork, PreprocessorClass, device="cpu", memory_size=100000, batch_size=32, gamma=0.99, 
-                 eps_start=1.0, eps_end=0.1, eps_decay=1000000, target_update=10000,
+    def __init__(self, 
+                 env, 
+                 replayBufferClass, 
+                 QNetwork, 
+                 PreprocessorClass, 
+                 device="cpu", 
+                 memory_size=100000, 
+                 batch_size=32, 
+                 gamma=0.99, 
+                 eps_start=1.0, 
+                 eps_end=0.1, 
+                 eps_decay=1000000, 
+                 target_update=10000,
                  learning_rate=0.00025):
         
         self.env = env
         self.device = device
-        self.memory = replayBufferClass(memory_size)
+        self.memory = replayBufferClass(memory_size, self.device)
         self.preprocessor = PreprocessorClass()
         self.batch_size = batch_size
         self.gamma = gamma
@@ -246,3 +258,5 @@ class DQNAgent:
             total_rewards.append(episode_reward)
         
         return np.mean(total_rewards)
+    
+    

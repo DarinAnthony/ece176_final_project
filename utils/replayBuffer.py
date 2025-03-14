@@ -4,7 +4,7 @@ from collections import deque
 
 # Replay Memory for experience replay
 class ReplayBuffer:
-    def __init__(self, capacity, device):
+    def __init__(self, capacity, device="cpu"):
         self.buffer = deque(maxlen=capacity)
         self.device = device
     
