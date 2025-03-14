@@ -15,6 +15,9 @@ class DQN2(DQN):
             nn.ReLU()
         )
         
-        self.fc1 = nn.Linear(self._get_conv_output_size(), 512)
-        self.fc2 = nn.Linear(512, num_actions)
+        self.fcLayers = nn.Sequential(
+            nn.Linear(self._get_conv_output_size(), 512),
+            nn.ReLU(),
+            nn.Linear(512, num_actions)
+        )
         

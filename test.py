@@ -10,6 +10,7 @@ import os
 # Import your modules
 from utils.preprocessor import DQNPreprocessor
 from models.base import DQN
+from models.dqn2015 import DQN2
 from utils.replayBuffer import ReplayBuffer
 from agents.base import DQNAgent
 from utils.visualizer import DQNVisualizer  # The visualizer class you shared
