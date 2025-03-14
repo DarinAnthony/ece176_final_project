@@ -21,18 +21,20 @@ class DQN(nn.Module):
         self.num_actions = num_actions
         
         # Original DQN architecture from the paper
-        self.conv1 = nn.Conv2d(input_shape[0], 16, kernel_size=8, stride=4)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=4, stride=2)
+        self.convLayers = nn.Sequential(
+            nn.Conv2d(input_shape[0], 16, kernel_size=8, stride=4),
+            nn.ReLU(),
+            nn.Conv2d(16, 32, kernel_size=4, stride=2),
+            nn.ReLU()
+        )
+        
         self.fc1 = nn.Linear(self._get_conv_output_size(), 256)
         self.fc2 = nn.Linear(256, num_actions)
     
     def _get_conv_output_size(self):
         # Create a sample input tensor to get the size of the flattened output
         sample_input = torch.zeros(1, *self.input_shape)
-        output = self.conv1(sample_input)
-        output = F.relu(output)
-        output = self.conv2(output)
-        output = F.relu(output)
+        output = self.convLayers(sample_input)
         return int(np.prod(output.size()))
     
     def forward(self, x):
