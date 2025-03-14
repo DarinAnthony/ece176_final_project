@@ -421,6 +421,7 @@ def example_usage():
     Demonstrate how to use the DQN visualizer.
     """
     from preprocessor import DQNAgent
+    import ale_py
     
     # Create environment
     env_name = 'ALE/Breakout-v5'

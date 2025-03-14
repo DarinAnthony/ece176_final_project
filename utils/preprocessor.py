@@ -193,6 +193,7 @@ def example_usage():
     Demonstrate how to use the DQN preprocessor with an Atari environment.
     """
     import gymnasium as gym
+    import ale_py
     import matplotlib.pyplot as plt
     
     # Create environment
