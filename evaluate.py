@@ -131,7 +131,7 @@ def evaluate_model(model_path, env_name, num_episodes=30, record_episodes=5,
             print(f"\nRunning episode {episode+1}/{num_episodes}...")
             # Run episode without recording using agent's run_episode function
             reward, length, episode_actions, episode_q_values = agent.run_episode(
-                max_steps=10000, 
+                max_steps=18000, 
                 record=False,
                 evaluate=True
             )
@@ -378,7 +378,7 @@ def main():
                         help='Directory to save evaluation results')
     parser.add_argument('--device', type=str, default=None,
                         help='Device to run evaluation on (cuda or cpu)')
-    parser.add_argument('--record_length', type=int, default=3000,
+    parser.add_argument('--record_length', type=int, default=18000,
                         help='Maximum steps for recorded episodes')
     
     args = parser.parse_args()
