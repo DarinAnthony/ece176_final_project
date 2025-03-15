@@ -43,7 +43,13 @@ def evaluate_model(model_path, env_name, num_episodes=30, record_episodes=5,
     """
     # Setup device
     if device is None:
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = None
+        if torch.cuda.is_available():
+            device = torch.device("cuda")
+        elif torch.backends.mps.is_available():
+            device = torch.device("mps")
+        else:
+            device = torch.device("cpu")
     else:
         device = torch.device(device)
     print(f"Using device: {device}")
