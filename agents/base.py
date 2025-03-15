@@ -5,7 +5,10 @@ import torch.optim as optim
 import torch.nn.functional as F
 from collections import deque
 import os
+import time
 from tqdm import tqdm
+import gc
+import psutil
 
 
 # Main DQN Agent
@@ -321,6 +324,14 @@ class DQNAgent:
         episode_count = 0
         best_mean_reward = -float('inf')
         
+        # For clearing CUDA cache periodically
+        last_clear = 0
+        clear_interval = 10000  # Clear every 10k frames
+        
+        # Memory monitoring setup
+        last_memory_check = 0
+        memory_check_interval = 10000  # Check memory every 10K frames
+        
         while frame_count < num_frames:
             # Reset environment
             obs = self.reset_environment()
@@ -328,6 +339,10 @@ class DQNAgent:
             
             episode_reward = 0
             done = False
+            
+            # Memory management
+            last_clear = self._clear_cuda_cache(frame_count, last_clear, clear_interval)
+            last_memory_check = self._check_memory_usage(frame_count, last_memory_check, memory_check_interval)
             
             while not done and frame_count < num_frames:
                 # Select and perform action
@@ -510,3 +525,67 @@ class DQNAgent:
         except Exception as e:
             print(f"Error loading model from {filepath}: {e}")
             return {}
+        
+        
+######################################################################
+############################# Memory Management Methods
+######################################################################
+        
+    def _clear_cuda_cache(self, frame_count, last_clear, clear_interval):
+        """Periodically clear CUDA cache to prevent memory fragmentation."""
+        if frame_count - last_clear >= clear_interval and torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            return frame_count
+        return last_clear
+
+    def _check_memory_usage(self, frame_count, last_memory_check, memory_check_interval):
+        """Monitor and manage memory usage during training."""
+        if frame_count - last_memory_check >= memory_check_interval:
+            # Force garbage collection
+            gc.collect()
+            
+            # Check and log memory usage
+            process = psutil.Process()
+            memory_info = process.memory_info()
+            memory_usage_gb = memory_info.rss / (1024 * 1024 * 1024)
+            
+            # Log memory usage
+            tqdm.write(f"\nMemory usage: {memory_usage_gb:.2f} GB")
+            
+            # Perform aggressive cleanup if memory is too high
+            if memory_usage_gb > 70:  # If using more than 70GB
+                self._perform_aggressive_cleanup(memory_usage_gb)
+                
+            return frame_count
+        return last_memory_check
+
+    def _perform_aggressive_cleanup(self, current_memory_gb):
+        """Perform aggressive memory cleanup when memory usage is too high."""
+        tqdm.write("WARNING: High memory usage detected - performing aggressive cleanup")
+        
+        # 1. More aggressive garbage collection
+        for _ in range(3):  # Run GC multiple times
+            gc.collect()
+        
+        # 2. Clear unused PyTorch caches
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        
+        # 3. Trim the replay buffer if it's very large
+        if len(self.memory) > 100000:  # If buffer is substantial
+            # Remove the oldest 10% of experiences
+            trim_count = int(len(self.memory) * 0.1)
+            for _ in range(trim_count):
+                self.memory.buffer.popleft()
+            tqdm.write(f"Trimmed {trim_count} old experiences from replay buffer")
+        
+        # 4. Check if it helped
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        new_memory_usage_gb = memory_info.rss / (1024 * 1024 * 1024)
+        tqdm.write(f"Memory after cleanup: {new_memory_usage_gb:.2f} GB")
+        
+        # 5. If still critical, consider pausing training briefly
+        if new_memory_usage_gb > 75:
+            tqdm.write("CRITICAL: Memory still too high - pausing briefly")
+            time.sleep(10)  # Give system time to stabilize

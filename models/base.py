@@ -42,6 +42,6 @@ class DQN(nn.Module):
     
     def forward(self, x):
         x = self.convLayers(x)
-        x = x.view(x.shape[0], -1)  # Flatten
+        x = x.reshape(x.shape[0], -1)  # Flatten
         x = self.fcLayers(x)
         return x
