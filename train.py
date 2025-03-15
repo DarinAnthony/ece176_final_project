@@ -111,7 +111,7 @@ if __name__ == "__main__":
     #                 gamma=0.99,
     #                 eps_start=1.0,
     #                 eps_end=0.1,
-    #                 eps_decay=250000,             
+    #                 eps_decay=1000000,             
     #                 target_update=5000,          
     #                 learning_rate=0.00025,       
     #                 update_freq=4,
