@@ -34,8 +34,8 @@ def train_breakout_dqn(num_frames=10000000,
     env_name = "ALE/Breakout-v5"
     env = gym.make(env_name)
     
-    # Force CPU usage
-    device = torch.device("cpu")
+    # Set device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
     
     # 2. Create the agent with minimized hyperparameters
