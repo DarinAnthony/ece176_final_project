@@ -7,6 +7,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import gymnasium as gym
 from collections import deque
 import time
+import torch
 
 class DQNVisualizer:
     """
@@ -16,7 +17,7 @@ class DQNVisualizer:
     def __init__(self, 
                  env_name, 
                  agent, 
-                 output_dir='./runs',
+                 output_dir='./eval_runs',
                  video_size=(1280, 720), 
                  fps=30,
                  show_metrics=True,
@@ -52,9 +53,12 @@ class DQNVisualizer:
         self.show_metrics = show_metrics
         self.show_q_values = show_q_values
         self.show_preprocessed = show_preprocessed
+        self.render = False
         
-        # Create output directory if it doesn't exist
+        ## Create base output directory structure
         os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "videos"), exist_ok=True)
+        os.makedirs(os.path.join(output_dir, "metrics"), exist_ok=True)
         
         # Performance metrics
         self.rewards_history = []
@@ -63,6 +67,9 @@ class DQNVisualizer:
         
         # For calculating FPS
         self.frame_times = deque(maxlen=100)
+        
+        # Video writer
+        self.video_writer = None
 
     def record_episode(self, filename=None, max_steps=10000, render=True):
         """
@@ -81,117 +88,94 @@ class DQNVisualizer:
         --------
         dict
             Episode statistics
-        """
+        """ 
         if filename is None:
             timestamp = time.strftime("%Y%m%d-%H%M%S")
             filename = f"{self.env_name}_{timestamp}"
         
         # Create environment
         env = gym.make(self.env_name, render_mode='rgb_array')
-        observation, _ = env.reset()
-        
-        # Reset agent
-        if hasattr(self.agent, 'reset'):
-            self.agent.reset()
-        
-        # Process initial frame(s)
-        state = self.agent.process_observation(observation)
-        
-        # Wait until we have a valid state
-        while state is None:
-            action = env.action_space.sample()
-            observation, _, _, _, _ = env.step(action)
-            state = self.agent.process_observation(observation)
+        self.agent.env = env  # Update agent's environment
         
         # Initialize video writer
-        video_path = os.path.join(self.output_dir, f"videos/{filename}.mp4")
+        video_path = os.path.join(self.output_dir, "videos", f"{filename}.mp4")
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        video_writer = cv2.VideoWriter(video_path, fourcc, self.fps, self.video_size)
+        self.video_writer = cv2.VideoWriter(video_path, fourcc, self.fps, self.video_size)
+        self.render = render
         
-        # Episode tracking
-        episode_reward = 0
-        step_count = 0
-        done = False
-        q_values_episode = []
+        # Run episode using agent's method with recording enabled
+        reward, length, actions, q_values = self.agent.run_episode(
+            max_steps=max_steps, 
+            record=True,
+            visualizer=self,
+            evaluate=True
+        )
         
-        # For FPS calculation
-        start_time = time.time()
-        
-        while not done and step_count < max_steps:
-            # Get action from agent
-            action = self.agent.select_action(state)
-            
-            # Get Q-values if available
-            q_values = None
-            if self.show_q_values and hasattr(self.agent, 'get_q_values'):
-                q_values = self.agent.get_q_values(state)
-                q_values_episode.append(q_values)
-            
-            # Execute action
-            observation, reward, terminated, truncated, info = env.step(action)
-            next_state = self.agent.process_observation(observation)
-            
-            # Update episode stats
-            episode_reward += reward
-            step_count += 1
-            done = terminated or truncated
-            
-            # Prepare visualization frame
-            viz_frame = self.create_visualization_frame(
-                observation, 
-                state, 
-                action, 
-                reward, 
-                episode_reward,
-                step_count,
-                q_values,
-                info
-            )
-            
-            # Write frame to video
-            video_writer.write(cv2.cvtColor(viz_frame, cv2.COLOR_RGB2BGR))
-            
-            if render:
-                if not self.running_in_colab():
-                    # Display frame if requested
-                    cv2.imshow('DQN Visualization', cv2.cvtColor(viz_frame, cv2.COLOR_RGB2BGR))
-                    cv2.waitKey(1)
-            
-            # Update timekeeping
-            self.frame_times.append(time.time() - start_time)
-            start_time = time.time()
-            
-            # Move to next state
-            state = next_state
-        
-        if self.running_in_colab():
-            from IPython.display import Video, display
-            from google.colab import drive
-            drive.mount('/content/drive', force_remount=True)
-            os.chdir('/content/drive/My Drive/projects/ece176_final_project')
-            display(Video(video_path, embed=True, width=600, height=400))
-            
-        # Clean up
-        video_writer.release()
+        # Close video writer
+        self.video_writer.release()
         if render:
             cv2.destroyAllWindows()
-        env.close()
         
         # Update metrics
-        self.rewards_history.append(episode_reward)
-        self.episode_lengths.append(step_count)
-        if q_values_episode:
-            self.q_values_history.append(np.mean(q_values_episode, axis=0))
+        self.rewards_history.append(reward)
+        self.episode_lengths.append(length)
+        if q_values:
+            self.q_values_history.append(np.mean(q_values, axis=0))
         
         print(f"Episode recorded to {video_path}")
-        print(f"Episode reward: {episode_reward}")
-        print(f"Episode length: {step_count} steps")
+        print(f"Episode reward: {reward}")
+        print(f"Episode length: {length} steps")
         
         return {
-            'reward': episode_reward,
-            'length': step_count,
-            'video_path': video_path
+            'reward': reward,
+            'length': length,
+            'video_path': video_path,
+            'actions': actions,
+            'q_values': q_values
         }
+    
+    def add_frame(self, raw_frame, state, action, reward, total_reward, step_count, q_values=None, info=None):
+        """
+        Add a frame to the video during recording.
+        
+        Parameters:
+        -----------
+        raw_frame : numpy.ndarray
+            Raw RGB frame from the environment
+        state : numpy.ndarray or torch.Tensor
+            Processed state (stacked frames)
+        action : int
+            Action taken
+        reward : float
+            Reward received
+        total_reward : float
+            Cumulative reward for the episode
+        step_count : int
+            Current step count
+        q_values : numpy.ndarray
+            Q-values for each action
+        info : dict
+            Additional information from the environment
+        """
+        # Calculate frame time
+        current_time = time.time()
+        if hasattr(self, 'last_frame_time'):
+            self.frame_times.append(current_time - self.last_frame_time)
+        self.last_frame_time = current_time
+        
+        # Create visualization frame
+        viz_frame = self.create_visualization_frame(
+            raw_frame, state, action, reward, total_reward, step_count, q_values, info
+        )
+        
+        # Write frame to video
+        self.video_writer.write(cv2.cvtColor(viz_frame, cv2.COLOR_RGB2BGR))
+        
+        # Display frame if requested
+        if self.render and not self.running_in_colab():
+            cv2.imshow('DQN Visualization', cv2.cvtColor(viz_frame, cv2.COLOR_RGB2BGR))
+            cv2.waitKey(1)
+            time.sleep(0.05)
     
     def create_visualization_frame(self, 
                                    raw_frame, 
@@ -209,7 +193,7 @@ class DQNVisualizer:
         -----------
         raw_frame : numpy.ndarray
             Raw RGB frame from the environment
-        processed_state : numpy.ndarray
+        processed_state : numpy.ndarray or torch.Tensor
             Processed state (stacked frames)
         action : int
             Action taken
@@ -245,32 +229,58 @@ class DQNVisualizer:
         
         # Add preprocessed frames if requested
         if self.show_preprocessed and processed_state is not None:
-            # Calculate layout for preprocessed frames
-            small_frame_size = (84, 84)  # Original preprocessed size
+            # Handle different state formats (tensor vs numpy)
+            if isinstance(processed_state, torch.Tensor):
+                # If it's a tensor with batch dimension, remove it
+                if len(processed_state.shape) == 4:
+                    processed_state = processed_state.squeeze(0)
+                
+                # Convert tensor to numpy for display
+                if processed_state.shape[0] == 4:  # (C,H,W) format
+                    num_channels = 4
+                    frames = [processed_state[i].detach().cpu().numpy() for i in range(num_channels)]
+                else:
+                    # Unexpected format, try to handle gracefully
+                    print(f"Warning: Unexpected state tensor shape: {processed_state.shape}")
+                    return canvas
+            else:
+                # Handle numpy array
+                if len(processed_state.shape) == 4:  # (B,H,W,C) or (B,C,H,W)
+                    processed_state = processed_state[0]  # Remove batch dimension
+                
+                if len(processed_state.shape) == 3:
+                    if processed_state.shape[2] == 4:  # (H,W,C) format
+                        num_channels = 4
+                        frames = [processed_state[:, :, i] for i in range(num_channels)]
+                    elif processed_state.shape[0] == 4:  # (C,H,W) format
+                        num_channels = 4
+                        frames = [processed_state[i] for i in range(num_channels)]
+                    else:
+                        # Unexpected format
+                        print(f"Warning: Unexpected state array shape: {processed_state.shape}")
+                        return canvas
+                else:
+                    # Unexpected format
+                    print(f"Warning: Unexpected state dimensions: {processed_state.shape}")
+                    return canvas
             
-            # Upscale slightly for better visibility
-            display_size = (84*2, 84*2)
-            
-            # Stack location - below the main game display
+            # Display the frames
+            display_size = (84*2, 84*2)  # Upscale for better visibility
             stack_y = game_display_height + 20
             stack_x = (self.video_size[0] - (display_size[0] * 4 + 30)) // 2  # Center the stack
             
-            # Display each frame in the stack
-            for i in range(min(4, processed_state.shape[2])):
-                # Get the frame and normalize for display
-                frame = processed_state[:, :, i]
+            for i, frame in enumerate(frames[:4]):  # Display up to 4 frames
+                # Normalize for display if needed (0-1 -> 0-255)
+                if frame.max() <= 1.0:
+                    frame_display = (frame * 255).astype(np.uint8)
+                else:
+                    frame_display = frame.astype(np.uint8)
                 
+                # Ensure frame is 2D before converting to RGB
+                if len(frame_display.shape) > 2:
+                    frame_display = frame_display.squeeze()
                 
-                # 1) Convert from PyTorch to NumPy
-                frame_np = frame.detach().cpu().numpy()  # shape might be (1, 84, 84)
-
-                # 2) Squeeze any leading dimension
-                frame_np = np.squeeze(frame_np)          # => shape (84, 84)
-
-                # 3) Scale up to 0–255 and cast
-                frame_display = (frame_np * 255).astype(np.uint8)
-
-                # 4) Now shape is (84, 84), so cv2.COLOR_GRAY2RGB is valid
+                # Convert to RGB for display
                 frame_rgb = cv2.cvtColor(frame_display, cv2.COLOR_GRAY2RGB)
                 
                 # Resize for display
@@ -423,8 +433,8 @@ class DQNVisualizer:
         
         plt.tight_layout()
         
-        # Save figure
-        plot_path = os.path.join(self.output_dir, f"metrics/{filename}.png")
+        # Save figure with correct directory
+        plot_path = os.path.join(self.output_dir, "metrics", f"{filename}.png")
         plt.savefig(plot_path)
         
         if show:
@@ -436,54 +446,6 @@ class DQNVisualizer:
         return plot_path
 
     def running_in_colab(self):
+        """Check if code is running in Google Colab."""
         import sys
         return 'google.colab' in sys.modules
-
-######################################################################
-############################# Example Usage
-######################################################################
-
-# Example usage
-def example_usage():
-    """
-    Demonstrate how to use the DQN visualizer.
-    """
-    from preprocessor import DQNAgent
-    import ale_py
-    
-    # Create environment
-    env_name = 'ALE/Breakout-v5'
-    
-    # Create agent
-    env = gym.make(env_name)
-    agent = DQNAgent(action_size=env.action_space.n)
-    env.close()
-    
-    # Create visualizer
-    visualizer = DQNVisualizer(
-        env_name=env_name,
-        agent=agent,
-        output_dir='../runs',
-        show_metrics=True,
-        show_q_values=False,  # Set to True if your agent implements get_q_values()
-        show_preprocessed=True
-    )
-    
-    # Record episodes
-    for episode in range(3):
-        print(f"\nRecording episode {episode+1}...")
-        episode_stats = visualizer.record_episode(
-            filename=f"breakout_episode_{episode+1}",
-            max_steps=500,
-            render=True  # Set to False for faster recording
-        )
-    
-    # Plot performance metrics
-    visualizer.plot_performance_metrics(
-        filename="breakout_performance",
-        show=True
-    )
-
-
-if __name__ == "__main__":
-    example_usage()

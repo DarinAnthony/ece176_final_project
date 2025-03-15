@@ -27,11 +27,14 @@ class DQNAgent:
                  update_freq=4, 
                  replay_start_size=50000, 
                  no_op_max=30,
-                 weights_path=None):
+                 weights_path=None,
+                 eval_interval=250000,
+                 save_interval=200000):
         
         self.env = env
         self.device = device
-        self.memory = replayBufferClass(memory_size, self.device)
+        self.memory_size = memory_size
+        self.memory = replayBufferClass(self.memory_size, self.device)
         self.preprocessor = PreprocessorClass()
         self.batch_size = batch_size
         self.gamma = gamma
@@ -55,15 +58,6 @@ class DQNAgent:
         self.policy_net = QNetwork(self.state_shape, self.num_actions).to(self.device)
         self.target_net = QNetwork(self.state_shape, self.num_actions).to(self.device)
         
-        # Load pre-trained weights if provided
-        if weights_path is not None:
-            self.load_weights(weights_path)
-        else:
-            # Initialize target network with policy network weights
-            self.target_net.load_state_dict(self.policy_net.state_dict())
-            
-        self.target_net.eval()
-        
         # Optimizer
         self.optimizer = optim.RMSprop(
             self.policy_net.parameters(), 
@@ -73,6 +67,21 @@ class DQNAgent:
             momentum=0.95,  # gradient momentum
             centered=False
             )
+        
+        # Load pre-trained weights if provided
+        if weights_path is not None:
+            _ = self.load_model(weights_path)
+        else:
+            # Initialize target network with policy network weights
+            self.target_net.load_state_dict(self.policy_net.state_dict())
+            
+        self.target_net.eval()
+        
+        # Evaluation parameter
+        self.eval_interval = eval_interval
+        
+        # Saving parameter
+        self.save_interval = save_interval
         
         # Counters
         self.steps_done = 0
@@ -216,7 +225,7 @@ class DQNAgent:
         self.optimizer.step()
     
 ######################################################################
-############################# Visualization Methods
+############################# Visualization and Evaluation Methods
 ######################################################################
     
     
@@ -232,22 +241,63 @@ class DQNAgent:
         
         with torch.no_grad():
             return self.policy_net(state).cpu().numpy()[0]
-    
-    def process_observation(self, obs):
+        
+        
+    def run_episode(self, max_steps=10000, record=False, visualizer=None, evaluate=True):
         """
-        For visualization: Process a single observation through the preprocessor
+        Run a single episode and optionally record it.
+        
+        Args:
+            max_steps: Maximum number of steps per episode
+            record: Whether to record the episode
+            visualizer: Optional visualizer for recording
+            evaluate: Whether to run in evaluation mode
+        
+        Returns:
+            tuple: (total_reward, episode_length, actions_taken, q_values)
         """
-        # Preprocess => returns shape (84,84,4) as a NumPy array
-        processed = self.preprocessor.process(obs)
-        if processed is None:
-            return None
+        obs = self.reset_environment()
+        state = self.get_state(obs)
+        
+        episode_reward = 0
+        steps = 0
+        done = False
+        
+        # Metrics collection
+        actions_taken = []
+        q_values = []
+        
+        while not done and steps < max_steps:
+            # Select action
+            action = self.select_action(state, evaluate=evaluate)
+            actions_taken.append(action)
+            
 
-        # Convert to (C,H,W) = (4,84,84)
-        processed = np.transpose(processed, (2, 0, 1))
-
-        # Convert to Torch
-        processed_tensor = torch.FloatTensor(processed).unsqueeze(0).to(self.device)
-        return processed_tensor
+            q_values.append(self.get_q_values(state))
+            
+            # Execute action with frame skipping
+            step_reward = 0
+            for _ in range(self.frame_skip):
+                obs, reward, terminated, truncated, info = self.env.step(action)
+                step_reward += reward
+                done = terminated or truncated
+                if done:
+                    break
+            
+            # Process next state
+            next_state = self.get_state(obs)
+            
+            # Record frame if visualizer is provided
+            if record and visualizer is not None:
+                visualizer.add_frame(obs, state, action, step_reward, episode_reward, steps, q_values[-1] if q_values else None, info)
+            
+            
+            # Update
+            state = next_state
+            episode_reward += step_reward
+            steps += 1
+        
+        return episode_reward, steps, actions_taken, q_values
     
     
 ######################################################################
@@ -318,20 +368,29 @@ class DQNAgent:
                 # Update the target network
                 if self.steps_done % self.target_update == 0:
                     self.target_net.load_state_dict(self.policy_net.state_dict())
-                
-                # Evaluate periodically
-                if frame_count % 50000 == 0:
-                    eval_reward = self.evaluate(10)
-                    eval_rewards.append((frame_count, eval_reward))
-                    print(f"\nFrame {frame_count}/{num_frames}, Mean Eval Reward: {eval_reward:.2f}")
                     
+                # Save model periodically
+                if frame_count % self.save_interval == 0:
+                    # modify the path name if there are instances of '/'
+                    env_name = self.env.unwrapped.spec.id.replace('/', '_')
+                    filename = f"weights/{env_name}_dqn_{frame_count}frames.pth"
+                    self.save_model(filename, frames_trained=frame_count)
+                    
+                
+                # Run evaluation periodically
+                if frame_count % self.eval_interval == 0:
+                    eval_reward = self.evaluate(num_episodes=10)
+                    eval_rewards.append((frame_count, eval_reward))
+                    tqdm.write(f"\nEvaluation at frame {frame_count}: {eval_reward:.2f}")
+                               
                     # Save best model
                     if eval_reward > best_mean_reward:
                         best_mean_reward = eval_reward
                         
                         # modify the path name if there are instances of '/'
-                        safe_id = self.env.unwrapped.spec.id.replace('/', '_')
-                        torch.save(self.policy_net.state_dict(), f"weights/dqn_{safe_id}_best.pth")
+                        env_name = self.env.unwrapped.spec.id.replace('/', '_')
+                        final_filepath = f"weights/{env_name}_dqn_best.pth"
+                        self.save_model(final_filepath, frames_trained=frame_count)
             
             # Episode finished
             episode_count += 1
@@ -340,60 +399,35 @@ class DQNAgent:
             
             # Print episode stats
             mean_reward = np.mean(rewards_window) if rewards_window else episode_reward
-            tqdm.write(f"Episode {episode_count}, Frames: {frame_count}, Reward: {episode_reward:.2f}, "
-                  f"Avg Reward: {mean_reward:.2f}, Epsilon: {max(self.eps_end, self.eps_start - (self.steps_done / self.eps_decay)):.4f}")
+            current_epsilon = max(self.eps_end, self.eps_start - (self.steps_done / self.eps_decay))
+            tqdm.write(f"Episode {episode_count} completed | "
+                  f"Reward: {episode_reward:.2f} | "
+                  f"Avg Reward: {mean_reward:.2f} | "
+                  f"Frames: {frame_count} | "
+                  f"Epsilon: {current_epsilon:.4f}")
         
         progress_bar.close()
         print("\nTraining completed!")
         
         # Save final model
-        safe_id = self.env.unwrapped.spec.id.replace('/', '_')
-        torch.save(self.policy_net.state_dict(), f"weights/dqn_{safe_id}_final.pth")
+        env_name = self.env.unwrapped.spec.id.replace('/', '_')
+        final_filepath = f"weights/{env_name}_dqn_final.pth"
+        self.save_model(final_filepath, frames_trained=frame_count)
         
         return episode_rewards, eval_rewards
     
     
-    def evaluate(self, num_episodes=10, epsilon=0.05):
+    def evaluate(self, num_episodes=10):
         """
         Evaluate the agent over several episodes
         """
         
         total_rewards = []
-        
+    
         for _ in range(num_episodes):
-            obs = self.reset_environment()
-            
-            # get a state
-            state = self.get_state(obs)
-            
-            episode_reward = 0
-            done = False
-            
-            while not done:
-                # Select action with fixed epsilon
-                if random.random() > epsilon:
-                    with torch.no_grad():
-                        action = self.policy_net(state).max(1)[1].view(1, 1).item()
-                else:
-                    action = random.randrange(self.num_actions)
-                
-                # Skip frames (act every k frames)
-                total_reward = 0
-                for _ in range(self.frame_skip):
-                    obs, reward, terminated, truncated, _ = self.env.step(action)
-                    total_reward += reward
-                    done = terminated or truncated
-                    if done:
-                        break
-                
-                # Process new frame
-                next_state = self.get_state(obs)
-                
-                # Move to the next state
-                state = next_state
-                episode_reward += total_reward
-            
-            total_rewards.append(episode_reward)
+            # Run a single episode using run_episode (no recording)
+            reward, _, _, _ = self.run_episode(evaluate=True)
+            total_rewards.append(reward)
         
         return np.mean(total_rewards)
     
@@ -401,30 +435,78 @@ class DQNAgent:
 ######################################################################
 ############################# Utility Methods
 ######################################################################
-    
-    def save_weights(self, path):
-        """Save the current policy network weights to a file"""
-        try:
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            torch.save(self.policy_net.state_dict(), path)
-            print(f"Successfully saved weights to {path}")
-        except Exception as e:
-            print(f"Error saving weights to {path}: {e}")
             
-
-    def load_weights(self, path):
-        """Load weights from a file into both policy and target networks"""
+    def save_model(self, filepath, frames_trained=None, additional_data=None):
+        """
+        Save the model weights and important training information.
+        
+        Args:
+            filepath (str): Path where the model should be saved
+            frames_trained (int, optional): Number of frames the model has been trained for
+            additional_data (dict, optional): Any additional data to save with the model
+        """
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(os.path.abspath(filepath)), exist_ok=True)
+        
+        # Prepare data to save
+        save_data = {
+            'model_state_dict': self.policy_net.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'frames': frames_trained if frames_trained is not None else 0,
+            'hyperparams': {
+                'batch_size': self.batch_size,
+                'gamma': self.gamma,
+                'epsilon_start': self.eps_start,
+                'epsilon_end': self.eps_end,
+                'epsilon_decay': self.eps_decay,
+                'target_update': self.target_update,
+                'update_freq': self.update_freq,
+                'frame_skip': self.frame_skip,
+                'no_op_max': self.no_op_max
+            }
+        }
+      
+        # Add any additional data
+        if additional_data is not None and isinstance(additional_data, dict):
+            save_data.update(additional_data)
+        
+        # Save to file
+        torch.save(save_data, filepath)
+        print(f"Model saved to {filepath}")
+            
+        
+    def load_model(self, filepath):
+        """
+        Load a saved model and its training information.
+        
+        Args:
+            filepath (str): Path to the saved model
+            
+        Returns:
+            dict: The full checkpoint data including training information
+        """
         try:
-            state_dict = torch.load(path, map_location=self.device)
-            self.policy_net.load_state_dict(state_dict)
-            self.target_net.load_state_dict(state_dict)
-
-            # Print model info
-            print(f"Loaded model from {path}")
-            print(f"Model was trained for {state_dict.get('frames', 'unknown')} frames")
-            print(f"Original epsilon: {state_dict.get('epsilon', 'unknown')}")
-            return True
+            # Load the checkpoint
+            checkpoint = torch.load(filepath, map_location=self.device)
+            
+            # Load model weights
+            self.policy_net.load_state_dict(checkpoint['model_state_dict'])
+            self.target_net.load_state_dict(checkpoint['model_state_dict'])
+            
+            # Optionally load optimizer state if it exists and we have an optimizer
+            if 'optimizer_state_dict' in checkpoint and checkpoint['optimizer_state_dict'] is not None:
+                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            
+            # Print loaded model info
+            print(f"Loaded model from {filepath}")
+            if 'frames' in checkpoint:
+                print(f"Model was trained for {checkpoint['frames']} frames")
+            if 'epsilon' in checkpoint:
+                print(f"Epsilon value: {checkpoint['epsilon']}")
+            if 'hyperparams' in checkpoint:
+                print(f"Model hyperparameters: {checkpoint['hyperparams']}")
+                
+            return checkpoint
         except Exception as e:
-            print(f"Error loading weights from {path}: {e}")
-            return False
+            print(f"Error loading model from {filepath}: {e}")
+            return {}

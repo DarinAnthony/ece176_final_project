@@ -1,0 +1,44 @@
+{
+    "env_name": "ALE/Breakout-v5",
+    "model_path": "./weights/ALE_Breakout-v5_dqn_final.pth",
+    "num_episodes": 1,
+    "rewards": {
+        "mean": 3.0,
+        "median": 3.0,
+        "std": 0.0,
+        "max": 3.0,
+        "all_rewards": [
+            3.0
+        ]
+    },
+    "lengths": {
+        "mean": 282.0,
+        "median": 282.0,
+        "all_lengths": [
+            282
+        ]
+    },
+    "actions": {
+        "distribution": {
+            "2": 266,
+            "1": 6,
+            "3": 4,
+            "0": 6
+        }
+    },
+    "paper_comparison": {
+        "game": "breakout",
+        "your_score": 3.0,
+        "dqn_paper_score": 401.2,
+        "human_score": 31.8,
+        "random_score": 1.7,
+        "human_normalized_score": 0.04318936877076412,
+        "percent_of_dqn_paper_performance": 0.7477567298105683,
+        "exceeds_human": "False",
+        "exceeds_dqn_paper": "False"
+    },
+    "timestamp": "20250314_171329",
+    "q_values": {
+        "mean_max_q": 0.2311314046382904
+    }
+}
