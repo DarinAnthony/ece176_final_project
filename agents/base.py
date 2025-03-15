@@ -37,7 +37,7 @@ class DQNAgent:
         self.env = env
         self.device = device
         self.memory_size = memory_size
-        self.memory = replayBufferClass(self.memory_size, self.device)
+        self.memory = replayBufferClass(self.memory_size, (4, 84, 84), self.device)
         self.preprocessor = PreprocessorClass()
         self.batch_size = batch_size
         self.gamma = gamma
@@ -90,13 +90,19 @@ class DQNAgent:
         self.steps_done = 0
         self.episode_rewards = []
         
+        self.training_mode = True  # Flag to control tensor conversion
+        
         
 ######################################################################
 ############################# Helper Methods
 ######################################################################
     
     def reset_environment(self):
-        """Reset with random number of no-ops"""
+        """Reset environment and preprocessor with random number of no-ops"""
+        # Reset the preprocessor frame buffer
+        self.preprocessor.reset()
+        
+        # Reset the environment
         obs, _ = self.env.reset()
         
         # Apply random number of no-op actions
@@ -105,8 +111,11 @@ class DQNAgent:
         # Assume action 0 is NOOP
         for _ in range(no_op_count):
             obs, _, terminated, truncated, _ = self.env.step(0)
+            # Process the frame to build up the frame stack
+            _ = self.preprocessor.process(obs)
             if terminated or truncated:
                 obs, _ = self.env.reset()
+                self.preprocessor.reset()  # Reset preprocessor again
                 break
         
         return obs
@@ -114,9 +123,12 @@ class DQNAgent:
     
     def fill_replay_memory(self):
         """
-        NEW: Fill replay memory with random actions before training starts
+        Fill replay memory with random actions before training starts.
         """
         print(f"\nFilling replay memory with {self.replay_start_size} frames of random experience...")
+        
+        # Set training mode to False to avoid unnecessary tensor conversions
+        self.training_mode = False
         
         progress_bar = tqdm(total=self.replay_start_size, desc="Filling Replay Memory")
         frame_count = 0
@@ -124,7 +136,9 @@ class DQNAgent:
         while frame_count < self.replay_start_size:
             # Reset with NOOPs
             obs = self.reset_environment()
-            state = self.get_state(obs)
+            
+            # Get initial state (already stacked by preprocessor)
+            state = self.get_state(obs)  # This returns numpy array in CHW format
             
             done = False
             
@@ -132,20 +146,15 @@ class DQNAgent:
                 # Select random action
                 action = random.randrange(self.num_actions)
                 
-                # Skip frames (act every k frames)
-                total_reward = 0
-                for _ in range(self.frame_skip):
-                    obs, reward, terminated, truncated, _ = self.env.step(action)
-                    total_reward += reward
-                    done = terminated or truncated
-                    if done:
-                        break
+                # The environment handles frame skipping
+                obs, reward, terminated, truncated, _ = self.env.step(action)
+                done = terminated or truncated
                 
                 # Process new frame
-                next_state = self.get_state(obs)
+                next_state = self.get_state(obs)  # This returns numpy array in CHW format
                 
-                # Clip rewards
-                clipped_reward = np.sign(total_reward)
+                # Clip rewards to {-1, 0, 1} as per the paper
+                clipped_reward = np.sign(reward)
                 
                 # Store transition in memory
                 self.memory.add(state, action, clipped_reward, next_state, done)
@@ -159,6 +168,9 @@ class DQNAgent:
             
         progress_bar.close()
         print("Replay memory filled!")
+        
+        # Set training mode back to True for actual training
+        self.training_mode = True
         
     
     def select_action(self, state, evaluate=False):
@@ -179,23 +191,27 @@ class DQNAgent:
     
     def get_state(self, obs):
         """
-        Stack 4 frames together to create the state
+        Process a new observation to create a stacked state.
+        
+        Args:
+            obs: RGB observation from the environment
+            
+        Returns:
+            A tensor containing the stacked state in NCHW format
         """
-        self.preprocessor.reset()
+        # Process the frame and add it to the stack
+        stacked_frames = self.preprocessor.process(obs)  # Shape: (84, 84, 4)
         
-        # get a state
-        state = None
-        while state is None:
-            state = self.preprocessor.process(obs)
-            if state is None:
-                # Take random action to get more frames
-                obs, _, _, _, _ = self.env.step(self.env.action_space.sample())
-                
-        # Convert numpy array to PyTorch tensor and correct the dimension order
-        state = np.transpose(state, (2, 0, 1))  # Convert from (84,84,4) to (4,84,84)
-        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        # Convert from HWC to CHW format
+        chw_state = np.transpose(stacked_frames, (2, 0, 1))  # Shape: (4, 84, 84)
         
-        return state
+        # Convert to tensor for network
+        if self.training_mode:  # If we're training (not just filling buffer)
+            tensor_state = torch.FloatTensor(chw_state).unsqueeze(0).to(self.device) / 255.0
+            return tensor_state
+        else:
+            # During buffer filling, return numpy array to save memory
+            return chw_state
     
     
     def _optimize_model(self):
@@ -259,6 +275,11 @@ class DQNAgent:
         Returns:
             tuple: (total_reward, episode_length, actions_taken, q_values)
         """
+        
+        # Set training mode temporarily to True for consistent state processing
+        prev_training_mode = self.training_mode
+        self.training_mode = True
+        
         obs = self.reset_environment()
         state = self.get_state(obs)
         
@@ -278,26 +299,21 @@ class DQNAgent:
 
             q_values.append(self.get_q_values(state))
             
-            # Execute action with frame skipping
-            step_reward = 0
-            for _ in range(self.frame_skip):
-                obs, reward, terminated, truncated, info = self.env.step(action)
-                step_reward += reward
-                done = terminated or truncated
-                if done:
-                    break
+            # The environment already handles frame skipping
+            obs, reward, terminated, truncated, info = self.env.step(action)
+            done = terminated or truncated
             
             # Process next state
             next_state = self.get_state(obs)
             
             # Record frame if visualizer is provided
             if record and visualizer is not None:
-                visualizer.add_frame(obs, state, action, step_reward, episode_reward, steps, q_values[-1] if q_values else None, info)
+                visualizer.add_frame(obs, state, action, reward, episode_reward, steps, q_values[-1] if q_values else None, info)
             
             
             # Update
             state = next_state
-            episode_reward += step_reward
+            episode_reward += reward
             steps += 1
         
         return episode_reward, steps, actions_taken, q_values
@@ -348,27 +364,32 @@ class DQNAgent:
                 # Select and perform action
                 action = self.select_action(state)
                 
-                # Skip frames (act every k frames)
-                total_reward = 0
-                for _ in range(self.frame_skip):
-                    obs, reward, terminated, truncated, _ = self.env.step(action)
-                    total_reward += reward
-                    done = terminated or truncated
-                    if done:
-                        break
+                obs, reward, terminated, truncated, _ = self.env.step(action)
+                done = terminated or truncated
                 
                 # Process new frame
                 next_state = self.get_state(obs)
                 
                 # Clip rewards to {-1, 0, 1} as per the paper
-                clipped_reward = np.sign(total_reward)
+                clipped_reward = np.sign(reward)
+                
+                # Store transition in memory - Add proper handling for tensors
+                if isinstance(state, torch.Tensor):
+                    state_cpu = state.squeeze(0).cpu().numpy()
+                else:
+                    state_cpu = state
+                    
+                if isinstance(next_state, torch.Tensor):
+                    next_state_cpu = next_state.squeeze(0).cpu().numpy()
+                else:
+                    next_state_cpu = next_state
                 
                 # Store transition in memory
-                self.memory.add(state, action, clipped_reward, next_state, done)
+                self.memory.add(state_cpu, action, clipped_reward, next_state_cpu, done)
                 
                 # Move to the next state
                 state = next_state
-                episode_reward += total_reward
+                episode_reward += reward
                 frame_count += 1
                 self.steps_done += 1
                 
@@ -563,29 +584,21 @@ class DQNAgent:
         """Perform aggressive memory cleanup when memory usage is too high."""
         tqdm.write("WARNING: High memory usage detected - performing aggressive cleanup")
         
-        # 1. More aggressive garbage collection
+        # More aggressive garbage collection
         for _ in range(3):  # Run GC multiple times
             gc.collect()
         
-        # 2. Clear unused PyTorch caches
+        # Clear unused PyTorch caches
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         
-        # 3. Trim the replay buffer if it's very large
-        if len(self.memory) > 100000:  # If buffer is substantial
-            # Remove the oldest 10% of experiences
-            trim_count = int(len(self.memory) * 0.1)
-            for _ in range(trim_count):
-                self.memory.buffer.popleft()
-            tqdm.write(f"Trimmed {trim_count} old experiences from replay buffer")
-        
-        # 4. Check if it helped
+        # Check if it helped
         process = psutil.Process()
         memory_info = process.memory_info()
         new_memory_usage_gb = memory_info.rss / (1024 * 1024 * 1024)
         tqdm.write(f"Memory after cleanup: {new_memory_usage_gb:.2f} GB")
         
-        # 5. If still critical, consider pausing training briefly
+        # If still critical, consider pausing training briefly
         if new_memory_usage_gb > 75:
             tqdm.write("CRITICAL: Memory still too high - pausing briefly")
             time.sleep(10)  # Give system time to stabilize

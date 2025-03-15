@@ -1,0 +1,102 @@
+{
+    "env_name": "ALE/Breakout-v5",
+    "model_path": "./weights/ALE_Breakout-v5_dqn_1500000frames.pth",
+    "num_episodes": 30,
+    "rewards": {
+        "mean": 11.233333333333333,
+        "median": 12.0,
+        "std": 2.3619671650742498,
+        "max": 16.0,
+        "all_rewards": [
+            12.0,
+            12.0,
+            12.0,
+            12.0,
+            11.0,
+            10.0,
+            7.0,
+            12.0,
+            13.0,
+            12.0,
+            9.0,
+            12.0,
+            4.0,
+            10.0,
+            11.0,
+            11.0,
+            16.0,
+            12.0,
+            16.0,
+            8.0,
+            13.0,
+            12.0,
+            14.0,
+            12.0,
+            10.0,
+            10.0,
+            9.0,
+            12.0,
+            10.0,
+            13.0
+        ]
+    },
+    "lengths": {
+        "mean": 249.26666666666668,
+        "median": 216.0,
+        "all_lengths": [
+            196,
+            163,
+            326,
+            575,
+            216,
+            147,
+            144,
+            189,
+            401,
+            235,
+            114,
+            356,
+            152,
+            147,
+            283,
+            261,
+            165,
+            449,
+            187,
+            114,
+            216,
+            249,
+            426,
+            285,
+            156,
+            364,
+            144,
+            370,
+            196,
+            252
+        ]
+    },
+    "actions": {
+        "distribution": {
+            "0": 2333,
+            "2": 1183,
+            "3": 3343,
+            "1": 619
+        }
+    },
+    "paper_comparison": {
+        "game": "breakout",
+        "your_score": 11.233333333333333,
+        "dqn_paper_score": 401.2,
+        "human_score": 31.8,
+        "random_score": 1.7,
+        "human_normalized_score": 0.3167220376522702,
+        "percent_of_dqn_paper_performance": 2.799933532735128,
+        "exceeds_human": "False",
+        "exceeds_dqn_paper": "False"
+    },
+    "timestamp": "20250315_003436",
+    "q_values": {
+        "mean_max_q": 5.843753337860107
+    }
+}
