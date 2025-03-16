@@ -15,7 +15,8 @@ import psutil
 class DQNAgent:
     def __init__(self, 
                  env, 
-                 replayBufferClass, 
+                 replayBufferClass,
+                 frameShape, 
                  QNetwork, 
                  PreprocessorClass, 
                  device="cpu", 
@@ -37,7 +38,7 @@ class DQNAgent:
         self.env = env
         self.device = device
         self.memory_size = memory_size
-        self.memory = replayBufferClass(self.memory_size, (4, 84, 84), self.device)
+        self.memory = replayBufferClass(self.memory_size, frameShape, self.device)
         self.preprocessor = PreprocessorClass()
         self.batch_size = batch_size
         self.gamma = gamma

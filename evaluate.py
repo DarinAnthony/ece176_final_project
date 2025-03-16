@@ -68,6 +68,7 @@ def evaluate_model(model_path, env_name, num_episodes=30, record_episodes=5,
     agent = DQNAgent(
         env=env,
         replayBufferClass=SequentialGPUReplayBuffer,
+        frameShape=(4, 84, 84),
         QNetwork=DQN2,  # Use the same network architecture as in training
         PreprocessorClass=DQNPreprocessor,
         device=device,
@@ -255,6 +256,9 @@ def compare_with_dqn_paper(env_name, mean_reward):
     
     # Extract game name
     game_name = env_name.lower().split('/')[-1].split('-')[0]
+    
+    # Remove "deterministic" from the game name
+    game_name = game_name.replace('deterministic', '')
     
     if game_name in dqn_paper_results:
         paper_data = dqn_paper_results[game_name]

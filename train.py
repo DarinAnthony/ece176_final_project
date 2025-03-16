@@ -48,6 +48,7 @@ def train_breakout_dqn(num_frames=10000000,
     agent = DQNAgent(
         env=env,
         replayBufferClass=SequentialGPUReplayBuffer,
+        frameShape=(4, 84, 84),
         QNetwork=DQN2,
         PreprocessorClass=DQNPreprocessor,
         device=device,
