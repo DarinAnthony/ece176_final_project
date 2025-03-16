@@ -19,7 +19,7 @@ from models.base import DQN
 from models.dqn2015 import DQN2
 from utils.visualizer import DQNVisualizer
 from agents.base import DQNAgent
-from utils.replayBuffer import ReplayBuffer
+from utils.replayBuffer import SequentialGPUReplayBuffer
 
 
 def evaluate_model(model_path, env_name, num_episodes=30, record_episodes=5, 
@@ -67,7 +67,7 @@ def evaluate_model(model_path, env_name, num_episodes=30, record_episodes=5,
     # Create agent
     agent = DQNAgent(
         env=env,
-        replayBufferClass=ReplayBuffer,
+        replayBufferClass=SequentialGPUReplayBuffer,
         QNetwork=DQN2,  # Use the same network architecture as in training
         PreprocessorClass=DQNPreprocessor,
         device=device,

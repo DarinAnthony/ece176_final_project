@@ -9,7 +9,7 @@ import os
 from utils.preprocessor import DQNPreprocessor
 from models.base import DQN
 from models.dqn2015 import DQN2
-from utils.replayBuffer import GPUReplayBuffer
+from utils.replayBuffer import SequentialGPUReplayBuffer
 from agents.base import DQNAgent
 from utils.visualizer import DQNVisualizer
 
@@ -47,7 +47,7 @@ def train_breakout_dqn(num_frames=10000000,
     # 2. Create the agent with minimized hyperparameters
     agent = DQNAgent(
         env=env,
-        replayBufferClass=GPUReplayBuffer,
+        replayBufferClass=SequentialGPUReplayBuffer,
         QNetwork=DQN2,
         PreprocessorClass=DQNPreprocessor,
         device=device,
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     #                 target_update=5000,          
     #                 learning_rate=0.00025,       
     #                 update_freq=4,
-    #                 replay_start_size=25000,
+    #                 replay_start_size=50000,
     #                 no_op_max=30,
     #                 eval_interval=250000,
     #                 save_interval=500000)
