@@ -77,3 +77,17 @@ Each channel represents a different time step (not color channels anymore, but c
 # Notes
 
 For each file such as the preprocessor/visualizer, there may be an example usage section in the bottom you may use to understand how it is used at an abstracted level
+
+
+# References
+
+Flappy bird gym environment:
+https://github.com/robertoschiavone/flappy-bird-env
+
+The FASTEST introduction to Reinforcement Learning on the internet: https://www.youtube.com/watch?v=VnpRp7ZglfA
+RL Course by David Silver - Lecture 6: Value Function Approximation: https://www.youtube.com/watch?v=UoPei5o4fps
+
+Papers:
+
+
+

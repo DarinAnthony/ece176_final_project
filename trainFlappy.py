@@ -10,7 +10,7 @@ import os
 from utils.flappyPreprocessor import FlappyBirdPreprocessor
 from models.flappyModel import FlappyBirdDQN
 from utils.replayBuffer import SequentialGPUReplayBuffer
-from agents.flappyAgent import FlappyAgent
+from agents.flappy import FlappyAgent
 
 # Register FlappyBird environment if not already registered
 try:
