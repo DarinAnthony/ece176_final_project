@@ -54,21 +54,9 @@ class FlappyBirdEnv(gym.Env):
 
     @property
     def observation(self) -> ObsType:
-        try:
-            # Create a copy of the surface to avoid locking issues
-            surface_copy = self._surface.copy()
-            pixels = pygame.surfarray.pixels3d(surface_copy)
-            obs = np.transpose(np.array(pixels), axes=(1, 0, 2))
-            # Explicitly ensure surface is unlocked
-            del pixels  # This should release the lock
-            # Force garbage collection to ensure resources are freed
-            import gc
-            gc.collect()
-            return obs
-        except Exception as e:
-            print(f"Warning: Error getting observation: {e}")
-            # Return a blank observation as fallback
-            return np.zeros((800, 576, 3), dtype=np.uint8)
+        pixels = pygame.surfarray.pixels3d(self._surface)
+        obs = np.transpose(np.array(pixels), axes=(1, 0, 2))
+        return obs
 
     @property
     def reward(self) -> SupportsFloat:
@@ -241,12 +229,13 @@ class FlappyBirdEnv(gym.Env):
         self._base = Base(700)
         self._bird = Bird(222, 376)
 
-        self._surface = None
+        self._surface = None  # Reset to ensure it is reinitialized
 
         self._last_action = 0
         self._score = 0
 
-        if self.render_mode is not None:
+        # Instead of checking render_mode, check if the surface exists.
+        if self._surface is None:
             self.render()
 
         return self.observation, self.info
@@ -292,7 +281,7 @@ class FlappyBirdEnv(gym.Env):
                 self._surface.fill((135, 206, 235))
                 
         # Before any drawing operations
-        if self._surface is not None and pygame.surface.get_locked():
+        if self._surface is not None and self._surface.get_locked():
             try:
                 self._surface.unlock()
             except Exception as e:
