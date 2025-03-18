@@ -1,4 +1,5 @@
 # ECE176 Final Project
+Youtube video can be found here: https://www.youtube.com/watch?v=oFNBHbHPo6M
 This repository holds experiments run on the Atari games using Deep Reinforcement Learning algorithms such as DQN, using various different CNN architectures
 
 # Folder Structure
