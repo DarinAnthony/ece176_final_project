@@ -11,15 +11,15 @@ This repository holds experiments run on the Atari games using Deep Reinforcemen
 
         ├── base.py      # DQN 2013 architecture
 
-        ├── base.py      # DQN 2015 architecture
+        ├── dqn2015.py      # DQN 2015 architecture
 
-        ├── resnet_cnn.py        # ResNet-style architecture
-
-        └── attention_cnn.py     # Attention-based architecture
+        └── ...            # other attempts at modifying architecture
 
     ├── agents/
 
         ├── base.py      # Original Q-Learning Agent from 2015
+
+        └── flappy.py      # Agent inherited from base for different optimizer
 
     ├── utils/
 
@@ -33,23 +33,35 @@ This repository holds experiments run on the Atari games using Deep Reinforcemen
 
         ├── dqn_ALE_Breakout-v5_final.pth      # Stored weights from a training run
 
-    ├── runs/
+    ├── eval_runs/
 
-        ├── videos/
+        ├── game1/
 
-            ├── video1.mp4
+            ├── videos/
+    
+                ├── video1.mp4
+    
+                ├── ...
+    
+            ├── metrics/
+    
+                ├── metric1.png
+    
+                ├── ...
 
-            ├── ...
-
-        ├── metrics/
-
-            ├── metric1.png
+        ├── game2/
 
             ├── ...
 
     ├── train.py                 # Main training script
 
-    └── evaluate.py              # Evaluation script
+    ├── train.ipynb              # Main training script in notebook format (for Google Colab GPU access)
+
+    ├── ...                      # Other training scripts for other environments
+
+    ├── evaluate.py              # Main evaluation script
+
+    └── evaluate.py              # Main evaluation script
 
 
 # Preprocessing
